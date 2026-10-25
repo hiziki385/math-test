@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>読み込み中...</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+  }
+
+  body {
+    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ===== 音量ゲート画面 ===== */
+  #volumeGate {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #1a1a1a, #050505 70%);
+    padding: 20px;
+    cursor: default;
+  }
+  .gate-box {
+    max-width: 460px;
+    width: 100%;
+    text-align: center;
+    color: #eee;
+    background: #151515;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    padding: 36px 26px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  }
+  .gate-icon { font-size: 52px; margin-bottom: 12px; }
+  .gate-box h2 { font-size: 22px; margin-bottom: 14px; }
+  .gate-desc {
+    font-size: 14px;
+    line-height: 1.75;
+    color: #aaa;
+    margin-bottom: 24px;
+  }
+  .gate-desc b { color: #ff5555; }
+  #volCheckBtn, #manualBtn {
+    padding: 14px 28px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #ff3b3b, #ff7b00);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  #volCheckBtn:disabled { opacity: 0.45; cursor: default; }
+  .gate-status {
+    margin-top: 18px;
+    font-size: 14px;
+    min-height: 22px;
+    color: #ddd;
+    line-height: 1.5;
+  }
+  #manualWrap {
+    margin-top: 22px;
+    font-size: 13px;
+    color: #999;
+    display: none;
+  }
+  #manualWrap label {
+    display: block;
+    margin-bottom: 14px;
+    cursor: pointer;
+  }
+  #manualWrap input { margin-right: 6px; }
+  #manualBtn {
+    background: #3a3a3a;
+    font-size: 14px;
+    padding: 10px 22px;
+  }
+
+  /* ===== 偽のローディング画面 ===== */
+  #loading {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: none;          /* 音量チェック合格後に表示 */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    background: #000;
+    color: #e8e8e8;
+  }
+
+  .spinner {
+    width: 64px;
+    height: 64px;
+    border: 6px solid rgba(255, 255, 255, 0.12);
+    border-top-color: #4da3ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .msg {
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    color: #bbbbbb;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1; }
+  }
+
+  .bar {
+    width: min(260px, 70vw);
+    height: 6px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.14);
+    overflow: hidden;
+  }
+  .bar-fill {
+    width: 0;
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #4da3ff, #a45bff);
+    animation: fill 2.4s ease-in-out forwards;
+  }
+  @keyframes fill {
+    0%   { width: 0; }
+    60%  { width: 72%; }
+    85%  { width: 93%; }
+    100% { width: 97%; }
+  }
+
+  /* ===== ドッキリ演出画面 ===== */
+  #prank {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #e00000;
+  }
+
+  #prank.show {
+    display: flex;
+    animation: shake 0.12s linear infinite;
+  }
+
+  @keyframes shake {
+    0%   { transform: translate(-8px, 5px)  rotate(-0.3deg); }
+    25%  { transform: translate(9px, -6px)  rotate(0.4deg); }
+    50%  { transform: translate(-7px, -8px) rotate(-0.4deg); }
+    75%  { transform: translate(8px, 7px)   rotate(0.3deg); }
+    100% { transform: translate(-8px, 5px)  rotate(-0.3deg); }
+  }
+
+  .ring {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 40vmax;
+    height: 40vmax;
+    margin-left: -20vmax;
+    margin-top: -20vmax;
+    border-radius: 50%;
+    border: 6px solid rgba(255, 255, 255, 0.7);
+    opacity: 0;
+    pointer-events: none;
+    animation: ringOut 1.8s ease-out infinite;
+  }
+  @keyframes ringOut {
+    0%   { transform: scale(0.1); opacity: 0.8; }
+    100% { transform: scale(1.7); opacity: 0; }
+  }
+
+  #fx {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    padding: 0 12px;
+  }
+
+  .prank-text {
+    font-size: clamp(38px, 13vw, 170px);
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: 0.02em;
+    color: #ffffff;
+    text-shadow:
+      0 0 24px #000,
+      8px 8px 0 #000,
+      -3px -3px 0 #000;
+    animation:
+      textPump 0.5s cubic-bezier(0.2, 1.7, 0.5, 1) both,
+      textShake 0.1s linear infinite;
+  }
+  @keyframes textPump {
+    0%   { transform: scale(0.2) rotate(-14deg); opacity: 0; }
+    70%  { transform: scale(1.12) rotate(3deg);  opacity: 1; }
+    100% { transform: scale(1) rotate(-2deg); }
+  }
+  @keyframes textShake {
+    0%   { margin-left: -7px; margin-top: 5px; }
+    50%  { margin-left: 7px;  margin-top: -5px; }
+    100% { margin-left: -7px; margin-top: 5px; }
+  }
+
+  .sub {
+    margin-top: 18px;
+    font-size: clamp(16px, 4.5vw, 34px);
+    font-weight: 800;
+    color: #ffe600;
+    text-shadow: 3px 3px 0 #000, 0 0 18px #000;
+    opacity: 0;
+    animation:
+      subIn 0.6s 0.45s ease-out forwards,
+      subPulse 1.1s 1s ease-in-out infinite;
+  }
+  @keyframes subIn {
+    from { opacity: 0; transform: translateY(24px) scale(0.6); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes subPulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.06); }
+  }
+
+  #stopBtn {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 40;
+    display: none;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 999px;
+    cursor: pointer;
+    opacity: 0.6;
+  }
+  #stopBtn.show { display: block; }
+  #stopBtn:hover { opacity: 1; }
+</style>
+</head>
+<body>
+
+  <!-- ===== 音量ゲート画面（最初に表示） ===== -->
+  <div id="volumeGate">
+    <div class="gate-box">
+      <div class="gate-icon">🔊</div>
+      <h2>音量チェック</h2>
+      <p class="gate-desc">
+        このサイトは<b>音量MAX</b>でないと使用できません。<br>
+        端末の音量を最大にしてから「音量をチェックする」を押してください。<br>
+        <small style="color:#666;">※ テスト音を再生してマイクで音量を測定します。マイクの許可が必要です。</small>
+      </p>
+      <button id="volCheckBtn" type="button">音量をチェックする</button>
+      <p id="volStatus" class="gate-status"></p>
+
+      <div id="manualWrap">
+        <label><input type="checkbox" id="manualChk"> 端末の音量をMAXにしました（手動確認）</label>
+        <button id="manualBtn" type="button">このまま進む</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 偽のローディング画面 ===== -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p class="msg">ローディング中…（画面をクリックしてください）</p>
+    <div class="bar"><div class="bar-fill"></div></div>
+  </div>
+
+  <!-- ===== ドッキリ演出画面 ===== -->
+  <div id="prank">
+    <div class="ring"></div>
+    <div class="ring" style="animation-delay:0.6s"></div>
+    <div class="ring" style="animation-delay:1.2s"></div>
+
+    <canvas id="fx"></canvas>
+
+    <div class="wrap">
+      <h1 class="prank-text">ドッキリ<br>大成功！</h1>
+      <p class="sub">びっくりした？ｗｗｗ</p>
+    </div>
+  </div>
+
+  <button id="stopBtn" type="button">■ 停止</button>
+
+  <!-- 音声ファイル（同じフォルダに sound.mp3 を置く） -->
+  <audio id="sound" src="sound.mp3" preload="auto"></audio>
+
+<script>
+(function () {
+  const volumeGate = document.getElementById('volumeGate');
+  const volCheckBtn = document.getElementById('volCheckBtn');
+  const volStatus   = document.getElementById('volStatus');
+  const manualWrap  = document.getElementById('manualWrap');
+  const manualChk   = document.getElementById('manualChk');
+  const manualBtn   = document.getElementById('manualBtn');
+
+  const loading = document.getElementById('loading');
+  const prank   = document.getElementById('prank');
+  const sound   = document.getElementById('sound');
+  const stopBtn = document.getElementById('stopBtn');
+  const canvas  = document.getElementById('fx');
+  const ctx     = canvas.getContext('2d');
+
+  /* =========================================================
+     音量ゲート
+     ========================================================= */
+  // 検出音量の閾値（0〜128）。環境に応じて調整してください。
+  // 大きいほど「より大きな音量でないと通らない」ようになります。
+  const VOL_THRESHOLD = 18;
+
+  let volumeVerified = false;
+
+  function passGate() {
+    volumeVerified = true;
+    volumeGate.style.display = 'none';
+    loading.style.display = 'flex';
+  }
+
+  // マイク＋テストトーンで音量を推定する
+  async function checkVolume() {
+    volStatus.style.color = '#ddd';
+    volStatus.textContent = 'マイクの使用許可を求めてください…';
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
+    } catch (e) {
+      volStatus.style.color = '#ff6b6b';
+      volStatus.textContent = 'マイクを使用できません。手動確認で進んでください。';
+      manualWrap.style.display = 'block';
+      return;
+    }
+
+    volStatus.textContent = 'テスト音を再生して音量を測定中…';
+
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ac = new AC();
+    await ac.resume();
+
+    const mic = ac.createMediaStreamSource(stream);
+    const analyser = ac.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.3;
+    mic.connect(analyser);
+
+    // テストトーン（880Hz のビープ）
+    const osc = ac.createOscillator();
+    const g   = ac.createGain();
+    g.gain.value = 0.45;
+    osc.frequency.value = 880;
+    osc.connect(g).connect(ac.destination);
+    osc.start();
+
+    // 1.2秒間、マイク入力のピークを測定
+    const data = new Uint8Array(analyser.fftSize);
+    let peak = 0;
+    const t0 = performance.now();
+    while (performance.now() - t0 < 1200) {
+      analyser.getByteTimeDomainData(data);
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i] - 128);
+        if (v > peak) peak = v;
+      }
+      await new Promise(r => setTimeout(r, 40));
+    }
+
+    try { osc.stop(); } catch (e) {}
+    stream.getTracks().forEach(t => t.stop());
+    try { await ac.close(); } catch (e) {}
+
+    volStatus.textContent = '検出音量: ' + peak + ' / 128';
+
+    if (peak >= VOL_THRESHOLD) {
+      volStatus.style.color = '#4dff88';
+      volStatus.textContent = '✅ 音量OK！ローディング画面へ進みます…';
+      setTimeout(passGate, 700);
+    } else {
+      volStatus.style.color = '#ff6b6b';
+      volStatus.textContent =
+        '❌ 音量が足りません（検出: ' + peak + '）。端末の音量を最大にして再試行してください。';
+      manualWrap.style.display = 'block';
+    }
+  }
+
+  volCheckBtn.addEventListener('click', function () {
+    volCheckBtn.disabled = true;
+    checkVolume().finally(function () {
+      volCheckBtn.disabled = false;
+    });
+  });
+
+  manualBtn.addEventListener('click', function () {
+    if (!manualChk.checked) {
+      volStatus.style.color = '#ff6b6b';
+      volStatus.textContent = 'チェックボックスにチェックを入れてください。';
+      return;
+    }
+    passGate();
+  });
+
+  /* =========================================================
+     Web Audio API（ドッキリ時の音量増幅）
+     ========================================================= */
+  let audioCtx = null;
+  let sourceNode = null;
+  let gainNode = null;
+
+  // 増幅倍率（1.0 = 元の音量、2.5 = 2.5倍）
+  const BOOST_GAIN = 2.5;
+
+  function initAudioBoost() {
+    if (audioCtx) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+
+      audioCtx = new AC();
+      sourceNode = audioCtx.createMediaElementSource(sound);
+
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = BOOST_GAIN;
+
+      const limiter = audioCtx.createDynamicsCompressor();
+      limiter.threshold.value = -6;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.002;
+      limiter.release.value = 0.1;
+
+      sourceNode.connect(gainNode);
+      gainNode.connect(limiter);
+      limiter.connect(audioCtx.destination);
+    } catch (e) {
+      // file:// などで MediaElementSource が失敗した場合は
+      // 通常再生にフォールバック（増幅なし）
+      audioCtx = null;
+    }
+  }
+
+  /* =========================================================
+     紙吹雪パーティクル
+     ========================================================= */
+  let rafId = null;
+  let particles = [];
+  const COLORS = [
+    '#ff2b2b', '#ffe600', '#00e5ff', '#ff00d4',
+    '#7cff00', '#ffffff', '#ff8a00', '#8a5bff'
+  ];
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function emit(x, y, count, power) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = Math.random() * power + power * 0.35;
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s - 2,
+        size: Math.random() * 14 + 6,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.35,
+        color: COLORS[(Math.random() * COLORS.length) | 0],
+        life: 1,
+        decay: 0.006 + Math.random() * 0.008,
+        square: Math.random() < 0.5
+      });
+    }
+    if (particles.length > 900) particles.splice(0, particles.length - 900);
+  }
+
+  function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (Math.random() < 0.55) {
+      emit(Math.random() * canvas.width, -20, 2, 3);
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.vy += 0.28;
+      p.vx *= 0.995;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vr;
+      p.life -= p.decay;
+
+      if (p.life <= 0 || p.y > canvas.height + 60) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(p.life, 0);
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      if (p.square) {
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      } else {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    rafId = requestAnimationFrame(loop);
+  }
+
+  /* =========================================================
+     全画面表示
+     ========================================================= */
+  function goFullscreen() {
+    const el  = document.documentElement;
+    const req = el.requestFullscreen
+             || el.webkitRequestFullscreen
+             || el.msRequestFullscreen;
+    if (!req) return;
+    try {
+      const result = req.call(el);
+      if (result && typeof result.catch === 'function') {
+        result.catch(function () {});
+      }
+    } catch (e) {}
+  }
+
+  /* =========================================================
+     ドッキリ開始
+     ========================================================= */
+  let started = false;
+
+  function startPrank(event) {
+    if (!volumeVerified) return;              // 音量チェック未通過なら無効
+    if (event && event.target && event.target.closest('#stopBtn')) return;
+    if (started) return;
+    started = true;
+
+    goFullscreen();
+
+    loading.style.display = 'none';
+    prank.classList.add('show');
+
+    resize();
+    emit(canvas.width / 2, canvas.height / 2, 140, 15);
+    if (!rafId) loop();
+
+    // Web Audio で増幅して再生
+    initAudioBoost();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    sound.currentTime = 0;
+    sound.volume = 1.0;
+    const p = sound.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch(function () {});
+    }
+
+    setTimeout(function () {
+      stopBtn.classList.add('show');
+    }, 1200);
+  }
+
+  /* =========================================================
+     停止
+     ========================================================= */
+  function stopPrank(event) {
+    event.stopPropagation();
+
+    sound.pause();
+    sound.currentTime = 0;
+
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(function () {});
+    }
+
+    prank.classList.remove('show');
+    stopBtn.classList.remove('show');
+    // 停止後はローディング画面に戻す（音量ゲートは通過済み）
+    loading.style.display = 'flex';
+
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    particles = [];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    setTimeout(function () { started = false; }, 100);
+  }
+
+  /* =========================================================
+     イベント登録
+     ========================================================= */
+  document.addEventListener('click', startPrank);
+  document.addEventListener('touchstart', startPrank, { passive: true });
+  stopBtn.addEventListener('click', stopPrank);
+})();
+</script>
+</body>
+</html>
