@@ -250,25 +250,6 @@
     50%      { transform: scale(1.06); }
   }
 
-  #stopBtn {
-    position: fixed;
-    right: 14px;
-    bottom: 14px;
-    z-index: 40;
-    display: none;
-    padding: 12px 18px;
-    font-size: 14px;
-    font-weight: 700;
-    color: #ffffff;
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    border-radius: 999px;
-    cursor: pointer;
-    opacity: 0.6;
-  }
-  #stopBtn.show { display: block; }
-  #stopBtn:hover { opacity: 1; }
-
   /* audio要素はDOM上に置くが完全に不可視化 */
   #sound {
     position: absolute;
@@ -297,7 +278,7 @@
 
       <div id="manualWrap">
         <label><input type="checkbox" id="manualChk"> 端末の音量をMAXにしました（手動確認）</label>
-        <button id="manualBtn" type="button">このまま進む</button>
+        <button id="manualBtn" type="button" disabled>このまま進む</button>
       </div>
     </div>
   </div>
@@ -323,8 +304,6 @@
     </div>
   </div>
 
-  <button id="stopBtn" type="button">■ 停止</button>
-
   <!-- 同オリジン配信なのでcrossoriginは不要。Web Audio増幅が使える -->
   <audio id="sound" src="sound.mp3" preload="auto"></audio>
 
@@ -340,7 +319,6 @@
   const loading = document.getElementById('loading');
   const prank   = document.getElementById('prank');
   const sound   = document.getElementById('sound');
-  const stopBtn = document.getElementById('stopBtn');
   const canvas  = document.getElementById('fx');
   const ctx     = canvas.getContext('2d');
 
@@ -359,7 +337,6 @@
     loading.style.display = 'flex';
   }
 
-  // マイク＋テストトーンで音量を推定する
   async function checkVolume() {
     volStatus.style.color = '#ddd';
     volStatus.textContent = 'マイクの使用許可を求めてください…';
@@ -442,9 +419,7 @@
   });
 
   manualBtn.addEventListener('click', function (event) {
-    // 【重要】documentまで伝播してstartPrankが誤発火するのを防ぐ
     event.stopPropagation();
-
     if (!manualChk.checked) {
       volStatus.style.color = '#ff6b6b';
       volStatus.textContent = 'チェックボックスにチェックを入れてください。';
@@ -454,7 +429,7 @@
   });
 
   /* =========================================================
-     Web Audio API（ドッキリ時の音量増幅）
+     Web Audio API（音量増幅）
      ========================================================= */
   let audioCtx   = null;
   let gainNode   = null;
@@ -471,7 +446,6 @@
       if (!AC) return;
 
       audioCtx = new AC();
-
       sourceNode = audioCtx.createMediaElementSource(sound);
 
       gainNode = audioCtx.createGain();
@@ -488,7 +462,6 @@
       gainNode.connect(limiter);
       limiter.connect(audioCtx.destination);
     } catch (e) {
-      // 何らかの理由で失敗したら通常再生にフォールバック
       console.warn('Web Audio boost unavailable:', e);
       audioCtx = null;
       gainNode = null;
@@ -573,7 +546,7 @@
   }
 
   /* =========================================================
-     全画面表示（Vercelはトップレベルなので成功する）
+     全画面表示
      ========================================================= */
   function goFullscreen() {
     const el  = document.documentElement;
@@ -621,13 +594,10 @@
   let started = false;
 
   function startPrank(event) {
-    if (!volumeVerified) return;                 // ゲート未通過は無効
-    if (Date.now() - gatePassedAt < 300) return; // ゲート通過直後の誤発火防止
+    if (!volumeVerified) return;
+    if (Date.now() - gatePassedAt < 300) return;
 
-    if (event && event.target) {
-      if (event.target.closest('#stopBtn')) return;
-      if (event.target.closest('#volumeGate')) return;
-    }
+    if (event && event.target && event.target.closest('#volumeGate')) return;
 
     if (started) return;
     started = true;
@@ -642,37 +612,6 @@
     if (!rafId) loop();
 
     playSound();
-
-    setTimeout(function () {
-      stopBtn.classList.add('show');
-    }, 1200);
-  }
-
-  /* =========================================================
-     停止
-     ========================================================= */
-  function stopPrank(event) {
-    event.stopPropagation();
-
-    sound.pause();
-    sound.currentTime = 0;
-
-    if (document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen().catch(function () {});
-    }
-
-    prank.classList.remove('show');
-    stopBtn.classList.remove('show');
-    loading.style.display = 'flex';
-
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    particles = [];
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    setTimeout(function () { started = false; }, 100);
   }
 
   /* =========================================================
@@ -680,7 +619,6 @@
      ========================================================= */
   document.addEventListener('click', startPrank);
   document.addEventListener('touchstart', startPrank, { passive: true });
-  stopBtn.addEventListener('click', stopPrank);
 })();
 </script>
 </body>
