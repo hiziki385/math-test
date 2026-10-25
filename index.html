@@ -95,7 +95,7 @@
     position: fixed;
     inset: 0;
     z-index: 10;
-    display: none;          /* 音量チェック合格後に表示 */
+    display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -268,11 +268,21 @@
   }
   #stopBtn.show { display: block; }
   #stopBtn:hover { opacity: 1; }
+
+  /* audio要素はDOM上に置くが完全に不可視化 */
+  #sound {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body>
 
-  <!-- ===== 音量ゲート画面（最初に表示） ===== -->
+  <!-- ===== 音量ゲート画面 ===== -->
   <div id="volumeGate">
     <div class="gate-box">
       <div class="gate-icon">🔊</div>
@@ -315,12 +325,12 @@
 
   <button id="stopBtn" type="button">■ 停止</button>
 
-  <!-- 音声ファイル（同じフォルダに sound.mp3 を置く） -->
+  <!-- 同オリジン配信なのでcrossoriginは不要。Web Audio増幅が使える -->
   <audio id="sound" src="sound.mp3" preload="auto"></audio>
 
 <script>
 (function () {
-  const volumeGate = document.getElementById('volumeGate');
+  const volumeGate  = document.getElementById('volumeGate');
   const volCheckBtn = document.getElementById('volCheckBtn');
   const volStatus   = document.getElementById('volStatus');
   const manualWrap  = document.getElementById('manualWrap');
@@ -337,14 +347,14 @@
   /* =========================================================
      音量ゲート
      ========================================================= */
-  // 検出音量の閾値（0〜128）。環境に応じて調整してください。
-  // 大きいほど「より大きな音量でないと通らない」ようになります。
-  const VOL_THRESHOLD = 18;
+  const VOL_THRESHOLD = 18;   // 検出音量の閾値（0〜128）
 
   let volumeVerified = false;
+  let gatePassedAt   = 0;
 
   function passGate() {
     volumeVerified = true;
+    gatePassedAt   = Date.now();
     volumeGate.style.display = 'none';
     loading.style.display = 'flex';
   }
@@ -382,7 +392,6 @@
     analyser.smoothingTimeConstant = 0.3;
     mic.connect(analyser);
 
-    // テストトーン（880Hz のビープ）
     const osc = ac.createOscillator();
     const g   = ac.createGain();
     g.gain.value = 0.45;
@@ -390,7 +399,6 @@
     osc.connect(g).connect(ac.destination);
     osc.start();
 
-    // 1.2秒間、マイク入力のピークを測定
     const data = new Uint8Array(analyser.fftSize);
     let peak = 0;
     const t0 = performance.now();
@@ -421,14 +429,22 @@
     }
   }
 
-  volCheckBtn.addEventListener('click', function () {
+  volCheckBtn.addEventListener('click', function (event) {
+    event.stopPropagation();
     volCheckBtn.disabled = true;
     checkVolume().finally(function () {
       volCheckBtn.disabled = false;
     });
   });
 
-  manualBtn.addEventListener('click', function () {
+  manualChk.addEventListener('change', function () {
+    manualBtn.disabled = !manualChk.checked;
+  });
+
+  manualBtn.addEventListener('click', function (event) {
+    // 【重要】documentまで伝播してstartPrankが誤発火するのを防ぐ
+    event.stopPropagation();
+
     if (!manualChk.checked) {
       volStatus.style.color = '#ff6b6b';
       volStatus.textContent = 'チェックボックスにチェックを入れてください。';
@@ -440,9 +456,10 @@
   /* =========================================================
      Web Audio API（ドッキリ時の音量増幅）
      ========================================================= */
-  let audioCtx = null;
+  let audioCtx   = null;
+  let gainNode   = null;
+  let limiter    = null;
   let sourceNode = null;
-  let gainNode = null;
 
   // 増幅倍率（1.0 = 元の音量、2.5 = 2.5倍）
   const BOOST_GAIN = 2.5;
@@ -454,12 +471,13 @@
       if (!AC) return;
 
       audioCtx = new AC();
+
       sourceNode = audioCtx.createMediaElementSource(sound);
 
       gainNode = audioCtx.createGain();
       gainNode.gain.value = BOOST_GAIN;
 
-      const limiter = audioCtx.createDynamicsCompressor();
+      limiter = audioCtx.createDynamicsCompressor();
       limiter.threshold.value = -6;
       limiter.knee.value = 0;
       limiter.ratio.value = 20;
@@ -470,9 +488,11 @@
       gainNode.connect(limiter);
       limiter.connect(audioCtx.destination);
     } catch (e) {
-      // file:// などで MediaElementSource が失敗した場合は
-      // 通常再生にフォールバック（増幅なし）
+      // 何らかの理由で失敗したら通常再生にフォールバック
+      console.warn('Web Audio boost unavailable:', e);
       audioCtx = null;
+      gainNode = null;
+      limiter  = null;
     }
   }
 
@@ -553,7 +573,7 @@
   }
 
   /* =========================================================
-     全画面表示
+     全画面表示（Vercelはトップレベルなので成功する）
      ========================================================= */
   function goFullscreen() {
     const el  = document.documentElement;
@@ -570,13 +590,45 @@
   }
 
   /* =========================================================
+     音声再生（Web Audio boost経由）
+     ========================================================= */
+  function playSound() {
+    initAudioBoost();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    sound.currentTime = 0;
+    sound.volume = 1.0;
+
+    const p = sound.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch(function (err) {
+        console.warn('play failed:', err);
+        setTimeout(function () {
+          sound.currentTime = 0;
+          const retry = sound.play();
+          if (retry && typeof retry.catch === 'function') {
+            retry.catch(function (e) { console.warn('retry failed:', e); });
+          }
+        }, 400);
+      });
+    }
+  }
+
+  /* =========================================================
      ドッキリ開始
      ========================================================= */
   let started = false;
 
   function startPrank(event) {
-    if (!volumeVerified) return;              // 音量チェック未通過なら無効
-    if (event && event.target && event.target.closest('#stopBtn')) return;
+    if (!volumeVerified) return;                 // ゲート未通過は無効
+    if (Date.now() - gatePassedAt < 300) return; // ゲート通過直後の誤発火防止
+
+    if (event && event.target) {
+      if (event.target.closest('#stopBtn')) return;
+      if (event.target.closest('#volumeGate')) return;
+    }
+
     if (started) return;
     started = true;
 
@@ -589,17 +641,7 @@
     emit(canvas.width / 2, canvas.height / 2, 140, 15);
     if (!rafId) loop();
 
-    // Web Audio で増幅して再生
-    initAudioBoost();
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    sound.currentTime = 0;
-    sound.volume = 1.0;
-    const p = sound.play();
-    if (p && typeof p.catch === 'function') {
-      p.catch(function () {});
-    }
+    playSound();
 
     setTimeout(function () {
       stopBtn.classList.add('show');
@@ -621,7 +663,6 @@
 
     prank.classList.remove('show');
     stopBtn.classList.remove('show');
-    // 停止後はローディング画面に戻す（音量ゲートは通過済み）
     loading.style.display = 'flex';
 
     if (rafId) {
