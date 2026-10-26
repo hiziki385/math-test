@@ -2,7 +2,10 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
 <title>読み込み中...</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -10,16 +13,22 @@
   html, body {
     width: 100%;
     height: 100%;
+    height: 100dvh;
     overflow: hidden;
     background: #000;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
-    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", -apple-system, BlinkMacSystemFont, sans-serif;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
-    user-select: none;
+    -webkit-touch-callout: none;
     -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    overscroll-behavior: none;
   }
 
   /* ===== ローディング画面 ===== */
@@ -32,6 +41,8 @@
     align-items: center;
     justify-content: center;
     gap: 24px;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
     background: #000;
     color: #e8e8e8;
   }
@@ -50,6 +61,8 @@
     font-size: 15px;
     letter-spacing: 0.08em;
     color: #bbbbbb;
+    text-align: center;
+    padding: 0 20px;
     animation: blink 1.4s ease-in-out infinite;
   }
   @keyframes blink {
@@ -87,7 +100,8 @@
     align-items: center;
     justify-content: center;
     background: radial-gradient(circle at 50% 30%, #1a1a1a, #050505 70%);
-    padding: 20px;
+    padding: calc(env(safe-area-inset-top) + 16px) 16px
+             calc(env(safe-area-inset-bottom) + 16px) 16px;
     cursor: default;
   }
   #volumeTest.show { display: flex; }
@@ -101,7 +115,7 @@
     background: #181818;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 18px;
-    padding: 40px 28px;
+    padding: 36px 22px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
     animation: vtFadeIn 0.4s ease-out;
     transition: box-shadow 0.15s ease-out, border-color 0.15s ease-out;
@@ -111,7 +125,6 @@
     to   { opacity: 1; transform: translateY(0); }
   }
 
-  /* ビープ時に枠が発光する */
   .vt-box.beeping {
     border-color: rgba(124, 196, 255, 0.65);
     box-shadow:
@@ -121,7 +134,7 @@
   }
 
   .vt-box h2 {
-    font-size: 19px;
+    font-size: clamp(16px, 4.8vw, 20px);
     margin-bottom: 8px;
     color: #fff;
     font-weight: 700;
@@ -132,25 +145,25 @@
   }
 
   .vt-sub {
-    font-size: 13px;
+    font-size: clamp(11px, 3.2vw, 13px);
     color: #777;
-    margin-bottom: 28px;
+    margin-bottom: 26px;
     line-height: 1.6;
+    padding: 0 8px;
   }
 
-  /* イコライザー風ビジュアライザー */
   .vt-eq {
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    gap: 6px;
-    height: 80px;
-    margin: 0 auto 28px;
-    padding: 0 20px;
+    gap: clamp(4px, 1.2vw, 6px);
+    height: 76px;
+    margin: 0 auto 26px;
+    padding: 0 16px;
   }
   .vt-eq span {
     display: block;
-    width: 10px;
+    width: clamp(7px, 2.2vw, 10px);
     height: 10%;
     min-height: 6px;
     border-radius: 5px;
@@ -298,14 +311,12 @@
 </head>
 <body>
 
-  <!-- ===== ローディング画面 ===== -->
   <div id="loading">
     <div class="spinner"></div>
-    <p class="msg">ローディング中…（画面をクリックしてください）</p>
+    <p class="msg">ローディング中…<br>（画面をタップしてください）</p>
     <div class="bar"><div class="bar-fill"></div></div>
   </div>
 
-  <!-- ===== スピーカーテスト画面 ===== -->
   <div id="volumeTest">
     <div class="vt-box" id="vtBox">
       <h2>スピーカーテスト中</h2>
@@ -324,7 +335,6 @@
     </div>
   </div>
 
-  <!-- ===== ドッキリ演出画面 ===== -->
   <div id="prank">
     <div class="ring"></div>
     <div class="ring" style="animation-delay:0.6s"></div>
@@ -338,8 +348,7 @@
     </div>
   </div>
 
-  <!-- 同オリジン配信なのでcrossoriginは不要。Web Audio増幅が使える -->
-  <audio id="sound" src="sound.mp3" preload="auto"></audio>
+  <audio id="sound" src="sound.mp3" preload="auto" playsinline webkit-playsinline></audio>
 
 <script>
 (function () {
@@ -354,11 +363,18 @@
   /* =========================================================
      設定
      ========================================================= */
-  const BOOST_GAIN = 2.5;           // ドッキリ時の増幅倍率
-  const VOLUME_TEST_MS = 8000;      // スピーカーテスト画面の表示時間
-  const BEEP_INTERVAL_MS = 1100;    // ビープ間隔
-  const BEEP_GAIN = 0.05;           // ビープ音量（小さいほど聞こえにくい）
-  const BEEP_DURATION_MS = 220;     // ビープ1回の長さ
+  const BOOST_GAIN = 2.5;
+  const VOLUME_TEST_MS = 8000;
+  const BEEP_INTERVAL_MS = 1100;
+  const BEEP_GAIN = 0.05;
+  const BEEP_DURATION_MS = 220;
+
+  // スマホのスピーカーは高域が苦手なので 800Hz に調整
+  // （PCスピーカーでも十分聞こえる）
+  const BEEP_FREQ = 800;
+
+  // ビープ時のバイブレーション（対応端末のみ）
+  const VIBRATE_PATTERN = [30];
 
   /* =========================================================
      状態
@@ -375,18 +391,28 @@
   let particles    = [];
   let beepFlashTimer = null;
 
+  const isTouch = matchMedia('(pointer: coarse)').matches;
+
   /* =========================================================
-     Web Audio 初期化（ユーザージェスチャ中に呼ぶ）
+     Web Audio 初期化（ユーザージェスチャ中に同期的に呼ぶ）
      ========================================================= */
   function initAudio() {
-    if (audioCtx) return;
+    if (audioCtx) {
+      // 既に生成済みでもサスペンドされてるなら再開
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(function () {});
+      }
+      return;
+    }
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
 
       audioCtx = new AC();
+
+      // iOS Safari は resume() をユーザージェスチャ内で呼ばないとダメ
       if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+        audioCtx.resume().catch(function () {});
       }
 
       sourceNode = audioCtx.createMediaElementSource(sound);
@@ -417,33 +443,44 @@
   }
 
   /* =========================================================
-     ビープ音（小さなサイン波）＋カード発光
+     ビープ音＋発光＋バイブ
      ========================================================= */
   function playBeep() {
-    if (!audioCtx) return;
-    try {
-      const now = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const g   = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 880;
-
-      g.gain.setValueAtTime(0.0001, now);
-      g.gain.exponentialRampToValueAtTime(BEEP_GAIN, now + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-
-      osc.connect(g);
-      g.connect(audioCtx.destination);
-      if (beepAnalyser) g.connect(beepAnalyser);
-
-      osc.start(now);
-      osc.stop(now + 0.22);
-    } catch (e) {
-      console.warn('Beep failed', e);
+    // iOS対策：ビープ直前にもサスペンドチェック
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(function () {});
     }
 
-    // カードの縁を光らせて「今鳴った」ことを視覚化
+    if (audioCtx && audioCtx.state === 'running') {
+      try {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const g   = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = BEEP_FREQ;
+
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(BEEP_GAIN, now + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        if (beepAnalyser) g.connect(beepAnalyser);
+
+        osc.start(now);
+        osc.stop(now + 0.22);
+      } catch (e) {
+        console.warn('Beep failed', e);
+      }
+    }
+
+    // 視覚フィードバック
     flashCard();
+
+    // 触覚フィードバック（対応端末のみ）
+    if (isTouch && navigator.vibrate) {
+      try { navigator.vibrate(VIBRATE_PATTERN); } catch (e) {}
+    }
   }
 
   function flashCard() {
@@ -491,7 +528,7 @@
   }
 
   /* =========================================================
-     全画面表示
+     全画面（iOS Safariは非対応だが失敗を握りつぶす）
      ========================================================= */
   function goFullscreen() {
     const el  = document.documentElement;
@@ -508,7 +545,7 @@
   }
 
   /* =========================================================
-     スピーカーテスト（小さいビープを一定間隔で鳴らす）
+     スピーカーテスト
      ========================================================= */
   async function runVolumeTest() {
     if (audioCtx && audioCtx.state === 'suspended') {
@@ -549,6 +586,9 @@
   }
   resize();
   window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () {
+    setTimeout(resize, 100);
+  });
 
   function emit(x, y, count, power) {
     for (let i = 0; i < count; i++) {
@@ -617,7 +657,12 @@
     prank.classList.add('show');
 
     if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume();
+      audioCtx.resume().catch(function () {});
+    }
+
+    // ドッキリ時にもバイブレーション（対応端末）
+    if (isTouch && navigator.vibrate) {
+      try { navigator.vibrate([100, 50, 100, 50, 300]); } catch (e) {}
     }
 
     sound.currentTime = 0;
@@ -642,12 +687,13 @@
   }
 
   /* =========================================================
-     開始
+     開始（pointerdownでタッチとマウスを統一）
      ========================================================= */
   function startFlow(event) {
     if (started) return;
     started = true;
 
+    // ユーザージェスチャ内で同期的に全画面＋AudioContext初期化
     goFullscreen();
     initAudio();
 
@@ -659,9 +705,15 @@
 
   /* =========================================================
      イベント登録
+     - pointerdown でタッチ・マウス・ペンを統一
+     - 古いブラウザ用に touchstart / click もフォールバック
      ========================================================= */
-  document.addEventListener('click', startFlow);
-  document.addEventListener('touchstart', startFlow, { passive: true });
+  if (window.PointerEvent) {
+    document.addEventListener('pointerdown', startFlow, { passive: true });
+  } else {
+    document.addEventListener('touchstart', startFlow, { passive: true });
+    document.addEventListener('click', startFlow);
+  }
 })();
 </script>
 </body>
