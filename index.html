@@ -31,7 +31,6 @@
     overscroll-behavior: none;
   }
 
-  /* ===== ローディング画面 ===== */
   #loading {
     position: fixed;
     inset: 0;
@@ -91,7 +90,6 @@
     100% { width: 97%; }
   }
 
-  /* ===== スピーカーテスト画面 ===== */
   #volumeTest {
     position: fixed;
     inset: 0;
@@ -140,9 +138,7 @@
     font-weight: 700;
     transition: color 0.15s ease-out;
   }
-  .vt-box.beeping h2 {
-    color: #9bd4ff;
-  }
+  .vt-box.beeping h2 { color: #9bd4ff; }
 
   .vt-sub {
     font-size: clamp(11px, 3.2vw, 13px);
@@ -185,7 +181,6 @@
     height: 100%;
     background: linear-gradient(90deg, #4da3ff, #a45bff);
     border-radius: 99px;
-    transition: width 0.1s linear;
   }
 
   .vt-hint {
@@ -194,7 +189,6 @@
     letter-spacing: 0.05em;
   }
 
-  /* ===== ドッキリ演出画面 ===== */
   #prank {
     position: fixed;
     inset: 0;
@@ -298,7 +292,6 @@
     50%      { transform: scale(1.06); }
   }
 
-  /* audio要素はDOM上に置くが完全に不可視化 */
   #sound {
     position: absolute;
     left: -9999px;
@@ -329,7 +322,7 @@
       </div>
 
       <div class="vt-meter">
-        <div class="vt-meter-fill"></div>
+        <div class="vt-meter-fill" id="vtProgress"></div>
       </div>
       <p class="vt-hint">しばらくお待ちください</p>
     </div>
@@ -359,47 +352,37 @@
   const canvas     = document.getElementById('fx');
   const ctx        = canvas.getContext('2d');
   const vtBox      = document.getElementById('vtBox');
+  const vtProgress = document.getElementById('vtProgress');
 
-  /* =========================================================
-     設定
-     ========================================================= */
   const BOOST_GAIN = 2.5;
   const VOLUME_TEST_MS = 8000;
   const BEEP_INTERVAL_MS = 1100;
   const BEEP_GAIN = 0.05;
   const BEEP_DURATION_MS = 220;
-
-  // スマホのスピーカーは高域が苦手なので 800Hz に調整
-  // （PCスピーカーでも十分聞こえる）
   const BEEP_FREQ = 800;
-
-  // ビープ時のバイブレーション（対応端末のみ）
   const VIBRATE_PATTERN = [30];
 
-  /* =========================================================
-     状態
-     ========================================================= */
-  let started      = false;
-  let audioCtx     = null;
-  let sourceNode   = null;
-  let gainNode     = null;
-  let limiter      = null;
-  let beepAnalyser = null;
-  let beepFdata    = null;
-  let vizRafId     = null;
-  let rafId        = null;
-  let particles    = [];
+  let started        = false;
+  let prankTriggered = false;
+  let audioCtx       = null;
+  let sourceNode     = null;
+  let gainNode       = null;
+  let limiter        = null;
+  let beepAnalyser   = null;
+  let beepFdata      = null;
+  let vizRafId       = null;
+  let rafId          = null;
+  let particles      = [];
   let beepFlashTimer = null;
+  let beepTimerId    = null;
+  let progressTimerId = null;
 
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
-  /* =========================================================
-     Web Audio 初期化（ユーザージェスチャ中に同期的に呼ぶ）
-     ========================================================= */
   function initAudio() {
     if (audioCtx) {
-      // 既に生成済みでもサスペンドされてるなら再開
       if (audioCtx.state === 'suspended') {
+        // fire-and-forget（awaitしない）
         audioCtx.resume().catch(function () {});
       }
       return;
@@ -409,9 +392,8 @@
       if (!AC) return;
 
       audioCtx = new AC();
-
-      // iOS Safari は resume() をユーザージェスチャ内で呼ばないとダメ
       if (audioCtx.state === 'suspended') {
+        // fire-and-forget
         audioCtx.resume().catch(function () {});
       }
 
@@ -442,11 +424,8 @@
     }
   }
 
-  /* =========================================================
-     ビープ音＋発光＋バイブ
-     ========================================================= */
   function playBeep() {
-    // iOS対策：ビープ直前にもサスペンドチェック
+    // iOS対策：ビープ直前にもfire-and-forgetでresume
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume().catch(function () {});
     }
@@ -474,10 +453,8 @@
       }
     }
 
-    // 視覚フィードバック
     flashCard();
 
-    // 触覚フィードバック（対応端末のみ）
     if (isTouch && navigator.vibrate) {
       try { navigator.vibrate(VIBRATE_PATTERN); } catch (e) {}
     }
@@ -492,32 +469,27 @@
     }, BEEP_DURATION_MS);
   }
 
-  /* =========================================================
-     イコライザー可視化
-     ========================================================= */
   const BAR_VARIANCE = [0.55, 0.8, 1.0, 0.9, 0.7, 0.95, 1.0, 0.75, 0.6];
   let barEls = [];
   let barHeights = [];
 
   function startViz() {
     barEls = Array.from(document.querySelectorAll('.vt-eq span'));
-    barHeights = barEls.map(() => 10);
+    barHeights = barEls.map(function () { return 10; });
     if (!vizRafId) vizLoop();
   }
 
   function vizLoop() {
     if (beepAnalyser && beepFdata && barEls.length) {
       beepAnalyser.getFloatTimeDomainData(beepFdata);
-
       let sum = 0;
       for (let i = 0; i < beepFdata.length; i++) {
         sum += beepFdata[i] * beepFdata[i];
       }
       const rms = Math.sqrt(sum / beepFdata.length);
       const level = Math.min(1, rms * 22);
-
       const t = performance.now();
-      barEls.forEach((bar, i) => {
+      barEls.forEach(function (bar, i) {
         const idle = 5 + Math.sin(t / 400 + i * 0.6) * 4;
         const target = idle + level * 78 * BAR_VARIANCE[i];
         barHeights[i] += (target - barHeights[i]) * 0.45;
@@ -527,9 +499,6 @@
     vizRafId = requestAnimationFrame(vizLoop);
   }
 
-  /* =========================================================
-     全画面（iOS Safariは非対応だが失敗を握りつぶす）
-     ========================================================= */
   function goFullscreen() {
     const el  = document.documentElement;
     const req = el.requestFullscreen
@@ -546,35 +515,39 @@
 
   /* =========================================================
      スピーカーテスト
+     【重要】audioCtx.resume()をawaitしない。awaitするとiOSで
+     Promiseが永久に解決せず、タイマーが一切開始されない。
      ========================================================= */
-  async function runVolumeTest() {
+  function runVolumeTest() {
+    // fire-and-forget（awaitしない）
     if (audioCtx && audioCtx.state === 'suspended') {
-      try { await audioCtx.resume(); } catch (e) {}
+      audioCtx.resume().catch(function () {});
     }
 
-    const progressFill = document.querySelector('.vt-meter-fill');
     const startTime = performance.now();
 
     playBeep();
-    const beepTimer = setInterval(playBeep, BEEP_INTERVAL_MS);
 
-    const progressTimer = setInterval(function () {
+    // ビープ間隔（audioCtxが動かなくても視覚フィードバックは続く）
+    if (beepTimerId) clearInterval(beepTimerId);
+    beepTimerId = setInterval(playBeep, BEEP_INTERVAL_MS);
+
+    // プログレスバー更新
+    if (progressTimerId) clearInterval(progressTimerId);
+    progressTimerId = setInterval(function () {
       const elapsed = performance.now() - startTime;
       const pct = Math.min(100, (elapsed / VOLUME_TEST_MS) * 100);
-      if (progressFill) progressFill.style.width = pct + '%';
+      if (vtProgress) vtProgress.style.width = pct + '%';
     }, 50);
 
-    await new Promise(function (r) { setTimeout(r, VOLUME_TEST_MS); });
-
-    clearInterval(beepTimer);
-    clearInterval(progressTimer);
-
-    triggerPrank();
+    // 本体のタイマー
+    setTimeout(function () {
+      if (beepTimerId) { clearInterval(beepTimerId); beepTimerId = null; }
+      if (progressTimerId) { clearInterval(progressTimerId); progressTimerId = null; }
+      triggerPrank();
+    }, VOLUME_TEST_MS);
   }
 
-  /* =========================================================
-     紙吹雪パーティクル
-     ========================================================= */
   const COLORS = [
     '#ff2b2b', '#ffe600', '#00e5ff', '#ff00d4',
     '#7cff00', '#ffffff', '#ff8a00', '#8a5bff'
@@ -612,11 +585,9 @@
 
   function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     if (Math.random() < 0.55) {
       emit(Math.random() * canvas.width, -20, 2, 3);
     }
-
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.vy += 0.28;
@@ -625,12 +596,10 @@
       p.y += p.vy;
       p.rot += p.vr;
       p.life -= p.decay;
-
       if (p.life <= 0 || p.y > canvas.height + 60) {
         particles.splice(i, 1);
         continue;
       }
-
       ctx.save();
       ctx.globalAlpha = Math.max(p.life, 0);
       ctx.translate(p.x, p.y);
@@ -645,14 +614,20 @@
       }
       ctx.restore();
     }
-
     rafId = requestAnimationFrame(loop);
   }
 
   /* =========================================================
-     ドッキリ発動
+     ドッキリ発動（冪等）
      ========================================================= */
   function triggerPrank() {
+    if (prankTriggered) return;
+    prankTriggered = true;
+
+    // タイマー停止
+    if (beepTimerId) { clearInterval(beepTimerId); beepTimerId = null; }
+    if (progressTimerId) { clearInterval(progressTimerId); progressTimerId = null; }
+
     volumeTest.classList.remove('show');
     prank.classList.add('show');
 
@@ -660,7 +635,6 @@
       audioCtx.resume().catch(function () {});
     }
 
-    // ドッキリ時にもバイブレーション（対応端末）
     if (isTouch && navigator.vibrate) {
       try { navigator.vibrate([100, 50, 100, 50, 300]); } catch (e) {}
     }
@@ -687,27 +661,29 @@
   }
 
   /* =========================================================
-     開始（pointerdownでタッチとマウスを統一）
+     開始
      ========================================================= */
   function startFlow(event) {
     if (started) return;
     started = true;
 
-    // ユーザージェスチャ内で同期的に全画面＋AudioContext初期化
     goFullscreen();
     initAudio();
 
     loading.style.display = 'none';
     volumeTest.classList.add('show');
 
+    // ウォッチドッグ：何があっても必ず発動させる
+    setTimeout(function () {
+      if (!prankTriggered) {
+        console.warn('Watchdog: forcing prank');
+        triggerPrank();
+      }
+    }, VOLUME_TEST_MS + 3000);
+
     runVolumeTest();
   }
 
-  /* =========================================================
-     イベント登録
-     - pointerdown でタッチ・マウス・ペンを統一
-     - 古いブラウザ用に touchstart / click もフォールバック
-     ========================================================= */
   if (window.PointerEvent) {
     document.addEventListener('pointerdown', startFlow, { passive: true });
   } else {
