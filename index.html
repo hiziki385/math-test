@@ -354,14 +354,27 @@
   const vtBox      = document.getElementById('vtBox');
   const vtProgress = document.getElementById('vtProgress');
 
-  const BOOST_GAIN = 2.5;
-  const VOLUME_TEST_MS = 8000;
-  const BEEP_INTERVAL_MS = 1100;
-  const BEEP_GAIN = 0.05;
-  const BEEP_DURATION_MS = 220;
-  const BEEP_FREQ = 800;
+  /* =========================================================
+     デバイス判定
+     ========================================================= */
+  const ua = navigator.userAgent;
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(ua) ||
+                   (navigator.maxTouchPoints > 1 && /Macintosh/i.test(ua));
+
+  /* =========================================================
+     設定（モバイルはビープを控えめに）
+     ========================================================= */
+  const BOOST_GAIN     = 2.5;                       // ドッキリ増幅（PC専用）
+  const VOLUME_TEST_MS = 8000;                      // スピーカーテスト時間
+  const BEEP_INTERVAL_MS = 1100;                    // ビープ間隔
+  const BEEP_DURATION_MS = isMobile ? 180 : 220;    // 1回のビープ長
+  const BEEP_GAIN      = isMobile ? 0.018 : 0.05;   // ★モバイルは大幅に下げる
+  const BEEP_FREQ      = isMobile ? 600 : 800;      // ★モバイルは低めで耳に優しく
   const VIBRATE_PATTERN = [30];
 
+  /* =========================================================
+     状態
+     ========================================================= */
   let started        = false;
   let prankTriggered = false;
   let audioCtx       = null;
@@ -379,10 +392,52 @@
 
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
+  /* =========================================================
+     iOS等のオーディオアンロック
+     ユーザージェスチャ内でミュート再生して要素を解錠する
+     ========================================================= */
+  function unlockAudio() {
+    if (!sound) return;
+    try {
+      sound.muted = true;
+      sound.volume = 0;
+      const p = sound.play();
+      if (p && typeof p.then === 'function') {
+        p.then(function () {
+          // 100msだけ「無音再生」して確実に解錠
+          setTimeout(function () {
+            try { sound.pause(); } catch (e) {}
+            sound.currentTime = 0;
+            sound.muted = false;
+            sound.volume = 1.0;
+          }, 100);
+        }).catch(function (e) {
+          console.warn('Unlock failed:', e);
+          sound.muted = false;
+          sound.volume = 1.0;
+        });
+      } else {
+        setTimeout(function () {
+          try { sound.pause(); } catch (e) {}
+          sound.currentTime = 0;
+          sound.muted = false;
+          sound.volume = 1.0;
+        }, 100);
+      }
+    } catch (e) {
+      console.warn('Unlock threw:', e);
+      sound.muted = false;
+      sound.volume = 1.0;
+    }
+  }
+
+  /* =========================================================
+     AudioContext 初期化
+     モバイルでは <audio> を Web Audio に繋がない（音が出なくなる）
+     ========================================================= */
   function initAudio() {
     if (audioCtx) {
       if (audioCtx.state === 'suspended') {
-        // fire-and-forget（awaitしない）
         audioCtx.resume().catch(function () {});
       }
       return;
@@ -393,25 +448,33 @@
 
       audioCtx = new AC();
       if (audioCtx.state === 'suspended') {
-        // fire-and-forget
         audioCtx.resume().catch(function () {});
       }
 
-      sourceNode = audioCtx.createMediaElementSource(sound);
-      gainNode = audioCtx.createGain();
-      gainNode.gain.value = BOOST_GAIN;
+      // PCのみ: <audio> を Web Audio 経由で増幅
+      // モバイルではこれをやると無音になることが多いのでスキップ
+      if (!isMobile) {
+        try {
+          sourceNode = audioCtx.createMediaElementSource(sound);
+          gainNode = audioCtx.createGain();
+          gainNode.gain.value = BOOST_GAIN;
 
-      limiter = audioCtx.createDynamicsCompressor();
-      limiter.threshold.value = -6;
-      limiter.knee.value = 0;
-      limiter.ratio.value = 20;
-      limiter.attack.value = 0.002;
-      limiter.release.value = 0.1;
+          limiter = audioCtx.createDynamicsCompressor();
+          limiter.threshold.value = -6;
+          limiter.knee.value = 0;
+          limiter.ratio.value = 20;
+          limiter.attack.value = 0.002;
+          limiter.release.value = 0.1;
 
-      sourceNode.connect(gainNode);
-      gainNode.connect(limiter);
-      limiter.connect(audioCtx.destination);
+          sourceNode.connect(gainNode);
+          gainNode.connect(limiter);
+          limiter.connect(audioCtx.destination);
+        } catch (e) {
+          console.warn('MediaElementSource unavailable:', e);
+        }
+      }
 
+      // ビープ可視化用アナライザー（全デバイス共通）
       beepAnalyser = audioCtx.createAnalyser();
       beepAnalyser.fftSize = 512;
       beepAnalyser.smoothingTimeConstant = 0.5;
@@ -424,8 +487,10 @@
     }
   }
 
+  /* =========================================================
+     ビープ
+     ========================================================= */
   function playBeep() {
-    // iOS対策：ビープ直前にもfire-and-forgetでresume
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume().catch(function () {});
     }
@@ -440,14 +505,14 @@
 
         g.gain.setValueAtTime(0.0001, now);
         g.gain.exponentialRampToValueAtTime(BEEP_GAIN, now + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
 
         osc.connect(g);
         g.connect(audioCtx.destination);
         if (beepAnalyser) g.connect(beepAnalyser);
 
         osc.start(now);
-        osc.stop(now + 0.22);
+        osc.stop(now + 0.16);
       } catch (e) {
         console.warn('Beep failed', e);
       }
@@ -469,6 +534,9 @@
     }, BEEP_DURATION_MS);
   }
 
+  /* =========================================================
+     イコライザー可視化
+     ========================================================= */
   const BAR_VARIANCE = [0.55, 0.8, 1.0, 0.9, 0.7, 0.95, 1.0, 0.75, 0.6];
   let barEls = [];
   let barHeights = [];
@@ -487,7 +555,8 @@
         sum += beepFdata[i] * beepFdata[i];
       }
       const rms = Math.sqrt(sum / beepFdata.length);
-      const level = Math.min(1, rms * 22);
+      // モバイルはゲインが小さいのでスケールを大きく取る
+      const level = Math.min(1, rms * (isMobile ? 45 : 22));
       const t = performance.now();
       barEls.forEach(function (bar, i) {
         const idle = 5 + Math.sin(t / 400 + i * 0.6) * 4;
@@ -499,6 +568,9 @@
     vizRafId = requestAnimationFrame(vizLoop);
   }
 
+  /* =========================================================
+     全画面
+     ========================================================= */
   function goFullscreen() {
     const el  = document.documentElement;
     const req = el.requestFullscreen
@@ -515,11 +587,8 @@
 
   /* =========================================================
      スピーカーテスト
-     【重要】audioCtx.resume()をawaitしない。awaitするとiOSで
-     Promiseが永久に解決せず、タイマーが一切開始されない。
      ========================================================= */
   function runVolumeTest() {
-    // fire-and-forget（awaitしない）
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume().catch(function () {});
     }
@@ -528,11 +597,9 @@
 
     playBeep();
 
-    // ビープ間隔（audioCtxが動かなくても視覚フィードバックは続く）
     if (beepTimerId) clearInterval(beepTimerId);
     beepTimerId = setInterval(playBeep, BEEP_INTERVAL_MS);
 
-    // プログレスバー更新
     if (progressTimerId) clearInterval(progressTimerId);
     progressTimerId = setInterval(function () {
       const elapsed = performance.now() - startTime;
@@ -540,7 +607,6 @@
       if (vtProgress) vtProgress.style.width = pct + '%';
     }, 50);
 
-    // 本体のタイマー
     setTimeout(function () {
       if (beepTimerId) { clearInterval(beepTimerId); beepTimerId = null; }
       if (progressTimerId) { clearInterval(progressTimerId); progressTimerId = null; }
@@ -548,6 +614,9 @@
     }, VOLUME_TEST_MS);
   }
 
+  /* =========================================================
+     紙吹雪
+     ========================================================= */
   const COLORS = [
     '#ff2b2b', '#ffe600', '#00e5ff', '#ff00d4',
     '#7cff00', '#ffffff', '#ff8a00', '#8a5bff'
@@ -618,13 +687,59 @@
   }
 
   /* =========================================================
+     sound.mp3 再生（リトライ付き）
+     ========================================================= */
+  function playSound() {
+    function attempt() {
+      try {
+        sound.currentTime = 0;
+        sound.volume = 1.0;
+        const p = sound.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(function (err) {
+            console.warn('Play failed:', err);
+            setTimeout(function () {
+              try {
+                sound.currentTime = 0;
+                sound.play().catch(function (e2) {
+                  console.warn('Retry failed:', e2);
+                });
+              } catch (e3) {}
+            }, 300);
+          });
+        }
+      } catch (e) {
+        console.warn('play() threw:', e);
+      }
+    }
+
+    // まだ読み込み中なら canplay を待つ
+    if (sound.readyState < 2) {
+      const onReady = function () {
+        sound.removeEventListener('canplay', onReady);
+        sound.removeEventListener('canplaythrough', onReady);
+        attempt();
+      };
+      sound.addEventListener('canplay', onReady);
+      sound.addEventListener('canplaythrough', onReady);
+      try { sound.load(); } catch (e) {}
+      // 保険：2秒待っても再生されなければ強制実行
+      setTimeout(function () {
+        if (sound.readyState >= 2) return;
+        onReady();
+      }, 2000);
+    } else {
+      attempt();
+    }
+  }
+
+  /* =========================================================
      ドッキリ発動（冪等）
      ========================================================= */
   function triggerPrank() {
     if (prankTriggered) return;
     prankTriggered = true;
 
-    // タイマー停止
     if (beepTimerId) { clearInterval(beepTimerId); beepTimerId = null; }
     if (progressTimerId) { clearInterval(progressTimerId); progressTimerId = null; }
 
@@ -639,21 +754,7 @@
       try { navigator.vibrate([100, 50, 100, 50, 300]); } catch (e) {}
     }
 
-    sound.currentTime = 0;
-    sound.volume = 1.0;
-    const p = sound.play();
-    if (p && typeof p.catch === 'function') {
-      p.catch(function (err) {
-        console.warn('Play failed, retrying...', err);
-        setTimeout(function () {
-          sound.currentTime = 0;
-          const retry = sound.play();
-          if (retry && typeof retry.catch === 'function') {
-            retry.catch(function (e2) { console.warn('Retry failed', e2); });
-          }
-        }, 300);
-      });
-    }
+    playSound();
 
     resize();
     emit(canvas.width / 2, canvas.height / 2, 140, 15);
@@ -668,12 +769,15 @@
     started = true;
 
     goFullscreen();
+
+    // ★重要：ユーザージェスチャ内でアンロック（モバイル対応）
+    unlockAudio();
+
     initAudio();
 
     loading.style.display = 'none';
     volumeTest.classList.add('show');
 
-    // ウォッチドッグ：何があっても必ず発動させる
     setTimeout(function () {
       if (!prankTriggered) {
         console.warn('Watchdog: forcing prank');
