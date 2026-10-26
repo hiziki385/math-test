@@ -78,7 +78,7 @@
     100% { width: 97%; }
   }
 
-  /* ===== 音声準備画面 ===== */
+  /* ===== スピーカーテスト画面 ===== */
   #volumeTest {
     position: fixed;
     inset: 0;
@@ -93,6 +93,7 @@
   #volumeTest.show { display: flex; }
 
   .vt-box {
+    position: relative;
     max-width: 420px;
     width: 100%;
     text-align: center;
@@ -103,10 +104,20 @@
     padding: 40px 28px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
     animation: vtFadeIn 0.4s ease-out;
+    transition: box-shadow 0.15s ease-out, border-color 0.15s ease-out;
   }
   @keyframes vtFadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ビープ時に枠が発光する */
+  .vt-box.beeping {
+    border-color: rgba(124, 196, 255, 0.65);
+    box-shadow:
+      0 20px 60px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(124, 196, 255, 0.4),
+      0 0 40px rgba(77, 163, 255, 0.5);
   }
 
   .vt-box h2 {
@@ -114,12 +125,17 @@
     margin-bottom: 8px;
     color: #fff;
     font-weight: 700;
+    transition: color 0.15s ease-out;
+  }
+  .vt-box.beeping h2 {
+    color: #9bd4ff;
   }
 
   .vt-sub {
     font-size: 13px;
     color: #777;
     margin-bottom: 28px;
+    line-height: 1.6;
   }
 
   /* イコライザー風ビジュアライザー */
@@ -289,11 +305,11 @@
     <div class="bar"><div class="bar-fill"></div></div>
   </div>
 
-  <!-- ===== 音声準備画面 ===== -->
+  <!-- ===== スピーカーテスト画面 ===== -->
   <div id="volumeTest">
-    <div class="vt-box">
-      <h2>音声出力を準備しています</h2>
-      <p class="vt-sub">オーディオデバイスを初期化中</p>
+    <div class="vt-box" id="vtBox">
+      <h2>スピーカーテスト中</h2>
+      <p class="vt-sub">スピーカーからテスト音を再生しています</p>
 
       <div class="vt-eq">
         <span></span><span></span><span></span>
@@ -333,36 +349,31 @@
   const sound      = document.getElementById('sound');
   const canvas     = document.getElementById('fx');
   const ctx        = canvas.getContext('2d');
+  const vtBox      = document.getElementById('vtBox');
 
   /* =========================================================
      設定
      ========================================================= */
-  // 音量増幅倍率（1.0 = 元の音量、2.5 = 2.5倍）
-  const BOOST_GAIN = 2.5;
-
-  // 音声準備画面の表示時間（ミリ秒）
-  const VOLUME_TEST_MS = 8000;
-
-  // ビープの間隔（ミリ秒）
-  const BEEP_INTERVAL_MS = 1100;
-
-  // ビープの音量（小さいほど「聞こえない体験」になる）
-  // 0.05 ≒ -26dBFS。100%音量でようやく聞こえるくらい
-  const BEEP_GAIN = 0.05;
+  const BOOST_GAIN = 2.5;           // ドッキリ時の増幅倍率
+  const VOLUME_TEST_MS = 8000;      // スピーカーテスト画面の表示時間
+  const BEEP_INTERVAL_MS = 1100;    // ビープ間隔
+  const BEEP_GAIN = 0.05;           // ビープ音量（小さいほど聞こえにくい）
+  const BEEP_DURATION_MS = 220;     // ビープ1回の長さ
 
   /* =========================================================
      状態
      ========================================================= */
-  let started     = false;
-  let audioCtx    = null;
-  let sourceNode  = null;
-  let gainNode    = null;
-  let limiter     = null;
+  let started      = false;
+  let audioCtx     = null;
+  let sourceNode   = null;
+  let gainNode     = null;
+  let limiter      = null;
   let beepAnalyser = null;
-  let beepFdata   = null;
-  let vizRafId    = null;
-  let rafId       = null;
-  let particles   = [];
+  let beepFdata    = null;
+  let vizRafId     = null;
+  let rafId        = null;
+  let particles    = [];
+  let beepFlashTimer = null;
 
   /* =========================================================
      Web Audio 初期化（ユーザージェスチャ中に呼ぶ）
@@ -378,7 +389,6 @@
         audioCtx.resume();
       }
 
-      // メイン音源: <audio> → Gain → Limiter → Destination
       sourceNode = audioCtx.createMediaElementSource(sound);
       gainNode = audioCtx.createGain();
       gainNode.gain.value = BOOST_GAIN;
@@ -394,7 +404,6 @@
       gainNode.connect(limiter);
       limiter.connect(audioCtx.destination);
 
-      // ビープ可視化用のアナライザー
       beepAnalyser = audioCtx.createAnalyser();
       beepAnalyser.fftSize = 512;
       beepAnalyser.smoothingTimeConstant = 0.5;
@@ -408,7 +417,7 @@
   }
 
   /* =========================================================
-     ビープ音（小さなサイン波）
+     ビープ音（小さなサイン波）＋カード発光
      ========================================================= */
   function playBeep() {
     if (!audioCtx) return;
@@ -417,25 +426,37 @@
       const osc = audioCtx.createOscillator();
       const g   = audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.value = 880;   // A5
+      osc.frequency.value = 880;
 
       g.gain.setValueAtTime(0.0001, now);
       g.gain.exponentialRampToValueAtTime(BEEP_GAIN, now + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
 
       osc.connect(g);
-      g.connect(audioCtx.destination);       // 実際に鳴らす
-      if (beepAnalyser) g.connect(beepAnalyser); // 可視化用に分岐
+      g.connect(audioCtx.destination);
+      if (beepAnalyser) g.connect(beepAnalyser);
 
       osc.start(now);
       osc.stop(now + 0.22);
     } catch (e) {
       console.warn('Beep failed', e);
     }
+
+    // カードの縁を光らせて「今鳴った」ことを視覚化
+    flashCard();
+  }
+
+  function flashCard() {
+    if (!vtBox) return;
+    vtBox.classList.add('beeping');
+    if (beepFlashTimer) clearTimeout(beepFlashTimer);
+    beepFlashTimer = setTimeout(function () {
+      vtBox.classList.remove('beeping');
+    }, BEEP_DURATION_MS);
   }
 
   /* =========================================================
-     イコライザー可視化（AnalyserNodeのRMSをバーに反映）
+     イコライザー可視化
      ========================================================= */
   const BAR_VARIANCE = [0.55, 0.8, 1.0, 0.9, 0.7, 0.95, 1.0, 0.75, 0.6];
   let barEls = [];
@@ -451,23 +472,17 @@
     if (beepAnalyser && beepFdata && barEls.length) {
       beepAnalyser.getFloatTimeDomainData(beepFdata);
 
-      // RMSを計算
       let sum = 0;
       for (let i = 0; i < beepFdata.length; i++) {
         sum += beepFdata[i] * beepFdata[i];
       }
       const rms = Math.sqrt(sum / beepFdata.length);
-
-      // ビープは小さい(0.05)のでスケールを大きく取る
       const level = Math.min(1, rms * 22);
 
       const t = performance.now();
       barEls.forEach((bar, i) => {
-        // アイドル時のゆらぎ（0〜10%）
         const idle = 5 + Math.sin(t / 400 + i * 0.6) * 4;
-        // 目標高さ
         const target = idle + level * 78 * BAR_VARIANCE[i];
-        // 平滑化
         barHeights[i] += (target - barHeights[i]) * 0.45;
         bar.style.height = barHeights[i].toFixed(1) + '%';
       });
@@ -493,7 +508,7 @@
   }
 
   /* =========================================================
-     音声準備フェーズ（小さいビープを一定間隔で鳴らす）
+     スピーカーテスト（小さいビープを一定間隔で鳴らす）
      ========================================================= */
   async function runVolumeTest() {
     if (audioCtx && audioCtx.state === 'suspended') {
@@ -503,13 +518,9 @@
     const progressFill = document.querySelector('.vt-meter-fill');
     const startTime = performance.now();
 
-    // 最初のビープ
     playBeep();
-
-    // 一定間隔でビープ
     const beepTimer = setInterval(playBeep, BEEP_INTERVAL_MS);
 
-    // プログレスバー更新
     const progressTimer = setInterval(function () {
       const elapsed = performance.now() - startTime;
       const pct = Math.min(100, (elapsed / VOLUME_TEST_MS) * 100);
