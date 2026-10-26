@@ -22,80 +22,12 @@
     -webkit-user-select: none;
   }
 
-  /* ===== 音量ゲート画面 ===== */
-  #volumeGate {
-    position: fixed;
-    inset: 0;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(circle at 50% 30%, #1a1a1a, #050505 70%);
-    padding: 20px;
-    cursor: default;
-  }
-  .gate-box {
-    max-width: 460px;
-    width: 100%;
-    text-align: center;
-    color: #eee;
-    background: #151515;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 18px;
-    padding: 36px 26px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-  }
-  .gate-icon { font-size: 52px; margin-bottom: 12px; }
-  .gate-box h2 { font-size: 22px; margin-bottom: 14px; }
-  .gate-desc {
-    font-size: 14px;
-    line-height: 1.75;
-    color: #aaa;
-    margin-bottom: 24px;
-  }
-  .gate-desc b { color: #ff5555; }
-  #volCheckBtn, #manualBtn {
-    padding: 14px 28px;
-    font-size: 16px;
-    font-weight: 700;
-    color: #fff;
-    background: linear-gradient(135deg, #ff3b3b, #ff7b00);
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
-  }
-  #volCheckBtn:disabled { opacity: 0.45; cursor: default; }
-  .gate-status {
-    margin-top: 18px;
-    font-size: 14px;
-    min-height: 22px;
-    color: #ddd;
-    line-height: 1.5;
-  }
-  #manualWrap {
-    margin-top: 22px;
-    font-size: 13px;
-    color: #999;
-    display: none;
-  }
-  #manualWrap label {
-    display: block;
-    margin-bottom: 14px;
-    cursor: pointer;
-  }
-  #manualWrap input { margin-right: 6px; }
-  #manualBtn {
-    background: #3a3a3a;
-    font-size: 14px;
-    padding: 10px 22px;
-  }
-
-  /* ===== 偽のローディング画面 ===== */
+  /* ===== ローディング画面 ===== */
   #loading {
     position: fixed;
     inset: 0;
     z-index: 10;
-    display: none;
+    display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -144,6 +76,93 @@
     60%  { width: 72%; }
     85%  { width: 93%; }
     100% { width: 97%; }
+  }
+
+  /* ===== 音声準備画面 ===== */
+  #volumeTest {
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #1a1a1a, #050505 70%);
+    padding: 20px;
+    cursor: default;
+  }
+  #volumeTest.show { display: flex; }
+
+  .vt-box {
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    color: #eee;
+    background: #181818;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    padding: 40px 28px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    animation: vtFadeIn 0.4s ease-out;
+  }
+  @keyframes vtFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .vt-box h2 {
+    font-size: 19px;
+    margin-bottom: 8px;
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .vt-sub {
+    font-size: 13px;
+    color: #777;
+    margin-bottom: 28px;
+  }
+
+  /* イコライザー風ビジュアライザー */
+  .vt-eq {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 6px;
+    height: 80px;
+    margin: 0 auto 28px;
+    padding: 0 20px;
+  }
+  .vt-eq span {
+    display: block;
+    width: 10px;
+    height: 10%;
+    min-height: 6px;
+    border-radius: 5px;
+    background: linear-gradient(180deg, #7cc4ff, #4da3ff 40%, #a45bff);
+    box-shadow: 0 0 8px rgba(77, 163, 255, 0.4);
+    will-change: height;
+  }
+
+  .vt-meter {
+    width: 100%;
+    height: 4px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .vt-meter-fill {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #4da3ff, #a45bff);
+    border-radius: 99px;
+    transition: width 0.1s linear;
+  }
+
+  .vt-hint {
+    font-size: 12px;
+    color: #555;
+    letter-spacing: 0.05em;
   }
 
   /* ===== ドッキリ演出画面 ===== */
@@ -263,31 +282,30 @@
 </head>
 <body>
 
-  <!-- ===== 音量ゲート画面 ===== -->
-  <div id="volumeGate">
-    <div class="gate-box">
-      <div class="gate-icon">🔊</div>
-      <h2>音量チェック</h2>
-      <p class="gate-desc">
-        このサイトは<b>音量MAX</b>でないと使用できません。<br>
-        端末の音量を最大にしてから「音量をチェックする」を押してください。<br>
-        <small style="color:#666;">※ テスト音を再生してマイクで音量を測定します。マイクの許可が必要です。</small>
-      </p>
-      <button id="volCheckBtn" type="button">音量をチェックする</button>
-      <p id="volStatus" class="gate-status"></p>
-
-      <div id="manualWrap">
-        <label><input type="checkbox" id="manualChk"> 端末の音量をMAXにしました（手動確認）</label>
-        <button id="manualBtn" type="button" disabled>このまま進む</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== 偽のローディング画面 ===== -->
+  <!-- ===== ローディング画面 ===== -->
   <div id="loading">
     <div class="spinner"></div>
     <p class="msg">ローディング中…（画面をクリックしてください）</p>
     <div class="bar"><div class="bar-fill"></div></div>
+  </div>
+
+  <!-- ===== 音声準備画面 ===== -->
+  <div id="volumeTest">
+    <div class="vt-box">
+      <h2>音声出力を準備しています</h2>
+      <p class="vt-sub">オーディオデバイスを初期化中</p>
+
+      <div class="vt-eq">
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+      </div>
+
+      <div class="vt-meter">
+        <div class="vt-meter-fill"></div>
+      </div>
+      <p class="vt-hint">しばらくお待ちください</p>
+    </div>
   </div>
 
   <!-- ===== ドッキリ演出画面 ===== -->
@@ -309,145 +327,59 @@
 
 <script>
 (function () {
-  const volumeGate  = document.getElementById('volumeGate');
-  const volCheckBtn = document.getElementById('volCheckBtn');
-  const volStatus   = document.getElementById('volStatus');
-  const manualWrap  = document.getElementById('manualWrap');
-  const manualChk   = document.getElementById('manualChk');
-  const manualBtn   = document.getElementById('manualBtn');
-
-  const loading = document.getElementById('loading');
-  const prank   = document.getElementById('prank');
-  const sound   = document.getElementById('sound');
-  const canvas  = document.getElementById('fx');
-  const ctx     = canvas.getContext('2d');
+  const loading    = document.getElementById('loading');
+  const volumeTest = document.getElementById('volumeTest');
+  const prank      = document.getElementById('prank');
+  const sound      = document.getElementById('sound');
+  const canvas     = document.getElementById('fx');
+  const ctx        = canvas.getContext('2d');
 
   /* =========================================================
-     音量ゲート
+     設定
      ========================================================= */
-  const VOL_THRESHOLD = 18;   // 検出音量の閾値（0〜128）
-
-  let volumeVerified = false;
-  let gatePassedAt   = 0;
-
-  function passGate() {
-    volumeVerified = true;
-    gatePassedAt   = Date.now();
-    volumeGate.style.display = 'none';
-    loading.style.display = 'flex';
-  }
-
-  async function checkVolume() {
-    volStatus.style.color = '#ddd';
-    volStatus.textContent = 'マイクの使用許可を求めてください…';
-
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        }
-      });
-    } catch (e) {
-      volStatus.style.color = '#ff6b6b';
-      volStatus.textContent = 'マイクを使用できません。手動確認で進んでください。';
-      manualWrap.style.display = 'block';
-      return;
-    }
-
-    volStatus.textContent = 'テスト音を再生して音量を測定中…';
-
-    const AC = window.AudioContext || window.webkitAudioContext;
-    const ac = new AC();
-    await ac.resume();
-
-    const mic = ac.createMediaStreamSource(stream);
-    const analyser = ac.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.3;
-    mic.connect(analyser);
-
-    const osc = ac.createOscillator();
-    const g   = ac.createGain();
-    g.gain.value = 0.45;
-    osc.frequency.value = 880;
-    osc.connect(g).connect(ac.destination);
-    osc.start();
-
-    const data = new Uint8Array(analyser.fftSize);
-    let peak = 0;
-    const t0 = performance.now();
-    while (performance.now() - t0 < 1200) {
-      analyser.getByteTimeDomainData(data);
-      for (let i = 0; i < data.length; i++) {
-        const v = Math.abs(data[i] - 128);
-        if (v > peak) peak = v;
-      }
-      await new Promise(r => setTimeout(r, 40));
-    }
-
-    try { osc.stop(); } catch (e) {}
-    stream.getTracks().forEach(t => t.stop());
-    try { await ac.close(); } catch (e) {}
-
-    volStatus.textContent = '検出音量: ' + peak + ' / 128';
-
-    if (peak >= VOL_THRESHOLD) {
-      volStatus.style.color = '#4dff88';
-      volStatus.textContent = '✅ 音量OK！ローディング画面へ進みます…';
-      setTimeout(passGate, 700);
-    } else {
-      volStatus.style.color = '#ff6b6b';
-      volStatus.textContent =
-        '❌ 音量が足りません（検出: ' + peak + '）。端末の音量を最大にして再試行してください。';
-      manualWrap.style.display = 'block';
-    }
-  }
-
-  volCheckBtn.addEventListener('click', function (event) {
-    event.stopPropagation();
-    volCheckBtn.disabled = true;
-    checkVolume().finally(function () {
-      volCheckBtn.disabled = false;
-    });
-  });
-
-  manualChk.addEventListener('change', function () {
-    manualBtn.disabled = !manualChk.checked;
-  });
-
-  manualBtn.addEventListener('click', function (event) {
-    event.stopPropagation();
-    if (!manualChk.checked) {
-      volStatus.style.color = '#ff6b6b';
-      volStatus.textContent = 'チェックボックスにチェックを入れてください。';
-      return;
-    }
-    passGate();
-  });
-
-  /* =========================================================
-     Web Audio API（音量増幅）
-     ========================================================= */
-  let audioCtx   = null;
-  let gainNode   = null;
-  let limiter    = null;
-  let sourceNode = null;
-
-  // 増幅倍率（1.0 = 元の音量、2.5 = 2.5倍）
+  // 音量増幅倍率（1.0 = 元の音量、2.5 = 2.5倍）
   const BOOST_GAIN = 2.5;
 
-  function initAudioBoost() {
+  // 音声準備画面の表示時間（ミリ秒）
+  const VOLUME_TEST_MS = 8000;
+
+  // ビープの間隔（ミリ秒）
+  const BEEP_INTERVAL_MS = 1100;
+
+  // ビープの音量（小さいほど「聞こえない体験」になる）
+  // 0.05 ≒ -26dBFS。100%音量でようやく聞こえるくらい
+  const BEEP_GAIN = 0.05;
+
+  /* =========================================================
+     状態
+     ========================================================= */
+  let started     = false;
+  let audioCtx    = null;
+  let sourceNode  = null;
+  let gainNode    = null;
+  let limiter     = null;
+  let beepAnalyser = null;
+  let beepFdata   = null;
+  let vizRafId    = null;
+  let rafId       = null;
+  let particles   = [];
+
+  /* =========================================================
+     Web Audio 初期化（ユーザージェスチャ中に呼ぶ）
+     ========================================================= */
+  function initAudio() {
     if (audioCtx) return;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
 
       audioCtx = new AC();
-      sourceNode = audioCtx.createMediaElementSource(sound);
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
 
+      // メイン音源: <audio> → Gain → Limiter → Destination
+      sourceNode = audioCtx.createMediaElementSource(sound);
       gainNode = audioCtx.createGain();
       gainNode.gain.value = BOOST_GAIN;
 
@@ -461,19 +393,140 @@
       sourceNode.connect(gainNode);
       gainNode.connect(limiter);
       limiter.connect(audioCtx.destination);
+
+      // ビープ可視化用のアナライザー
+      beepAnalyser = audioCtx.createAnalyser();
+      beepAnalyser.fftSize = 512;
+      beepAnalyser.smoothingTimeConstant = 0.5;
+      beepFdata = new Float32Array(beepAnalyser.fftSize);
+
+      startViz();
     } catch (e) {
-      console.warn('Web Audio boost unavailable:', e);
+      console.warn('Web Audio unavailable:', e);
       audioCtx = null;
-      gainNode = null;
-      limiter  = null;
     }
+  }
+
+  /* =========================================================
+     ビープ音（小さなサイン波）
+     ========================================================= */
+  function playBeep() {
+    if (!audioCtx) return;
+    try {
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const g   = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;   // A5
+
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(BEEP_GAIN, now + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+      osc.connect(g);
+      g.connect(audioCtx.destination);       // 実際に鳴らす
+      if (beepAnalyser) g.connect(beepAnalyser); // 可視化用に分岐
+
+      osc.start(now);
+      osc.stop(now + 0.22);
+    } catch (e) {
+      console.warn('Beep failed', e);
+    }
+  }
+
+  /* =========================================================
+     イコライザー可視化（AnalyserNodeのRMSをバーに反映）
+     ========================================================= */
+  const BAR_VARIANCE = [0.55, 0.8, 1.0, 0.9, 0.7, 0.95, 1.0, 0.75, 0.6];
+  let barEls = [];
+  let barHeights = [];
+
+  function startViz() {
+    barEls = Array.from(document.querySelectorAll('.vt-eq span'));
+    barHeights = barEls.map(() => 10);
+    if (!vizRafId) vizLoop();
+  }
+
+  function vizLoop() {
+    if (beepAnalyser && beepFdata && barEls.length) {
+      beepAnalyser.getFloatTimeDomainData(beepFdata);
+
+      // RMSを計算
+      let sum = 0;
+      for (let i = 0; i < beepFdata.length; i++) {
+        sum += beepFdata[i] * beepFdata[i];
+      }
+      const rms = Math.sqrt(sum / beepFdata.length);
+
+      // ビープは小さい(0.05)のでスケールを大きく取る
+      const level = Math.min(1, rms * 22);
+
+      const t = performance.now();
+      barEls.forEach((bar, i) => {
+        // アイドル時のゆらぎ（0〜10%）
+        const idle = 5 + Math.sin(t / 400 + i * 0.6) * 4;
+        // 目標高さ
+        const target = idle + level * 78 * BAR_VARIANCE[i];
+        // 平滑化
+        barHeights[i] += (target - barHeights[i]) * 0.45;
+        bar.style.height = barHeights[i].toFixed(1) + '%';
+      });
+    }
+    vizRafId = requestAnimationFrame(vizLoop);
+  }
+
+  /* =========================================================
+     全画面表示
+     ========================================================= */
+  function goFullscreen() {
+    const el  = document.documentElement;
+    const req = el.requestFullscreen
+             || el.webkitRequestFullscreen
+             || el.msRequestFullscreen;
+    if (!req) return;
+    try {
+      const result = req.call(el);
+      if (result && typeof result.catch === 'function') {
+        result.catch(function () {});
+      }
+    } catch (e) {}
+  }
+
+  /* =========================================================
+     音声準備フェーズ（小さいビープを一定間隔で鳴らす）
+     ========================================================= */
+  async function runVolumeTest() {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      try { await audioCtx.resume(); } catch (e) {}
+    }
+
+    const progressFill = document.querySelector('.vt-meter-fill');
+    const startTime = performance.now();
+
+    // 最初のビープ
+    playBeep();
+
+    // 一定間隔でビープ
+    const beepTimer = setInterval(playBeep, BEEP_INTERVAL_MS);
+
+    // プログレスバー更新
+    const progressTimer = setInterval(function () {
+      const elapsed = performance.now() - startTime;
+      const pct = Math.min(100, (elapsed / VOLUME_TEST_MS) * 100);
+      if (progressFill) progressFill.style.width = pct + '%';
+    }, 50);
+
+    await new Promise(function (r) { setTimeout(r, VOLUME_TEST_MS); });
+
+    clearInterval(beepTimer);
+    clearInterval(progressTimer);
+
+    triggerPrank();
   }
 
   /* =========================================================
      紙吹雪パーティクル
      ========================================================= */
-  let rafId = null;
-  let particles = [];
   const COLORS = [
     '#ff2b2b', '#ffe600', '#00e5ff', '#ff00d4',
     '#7cff00', '#ffffff', '#ff8a00', '#8a5bff'
@@ -546,79 +599,58 @@
   }
 
   /* =========================================================
-     全画面表示
+     ドッキリ発動
      ========================================================= */
-  function goFullscreen() {
-    const el  = document.documentElement;
-    const req = el.requestFullscreen
-             || el.webkitRequestFullscreen
-             || el.msRequestFullscreen;
-    if (!req) return;
-    try {
-      const result = req.call(el);
-      if (result && typeof result.catch === 'function') {
-        result.catch(function () {});
-      }
-    } catch (e) {}
-  }
+  function triggerPrank() {
+    volumeTest.classList.remove('show');
+    prank.classList.add('show');
 
-  /* =========================================================
-     音声再生（Web Audio boost経由）
-     ========================================================= */
-  function playSound() {
-    initAudioBoost();
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
+
     sound.currentTime = 0;
     sound.volume = 1.0;
-
     const p = sound.play();
     if (p && typeof p.catch === 'function') {
       p.catch(function (err) {
-        console.warn('play failed:', err);
+        console.warn('Play failed, retrying...', err);
         setTimeout(function () {
           sound.currentTime = 0;
           const retry = sound.play();
           if (retry && typeof retry.catch === 'function') {
-            retry.catch(function (e) { console.warn('retry failed:', e); });
+            retry.catch(function (e2) { console.warn('Retry failed', e2); });
           }
-        }, 400);
+        }, 300);
       });
     }
-  }
-
-  /* =========================================================
-     ドッキリ開始
-     ========================================================= */
-  let started = false;
-
-  function startPrank(event) {
-    if (!volumeVerified) return;
-    if (Date.now() - gatePassedAt < 300) return;
-
-    if (event && event.target && event.target.closest('#volumeGate')) return;
-
-    if (started) return;
-    started = true;
-
-    goFullscreen();
-
-    loading.style.display = 'none';
-    prank.classList.add('show');
 
     resize();
     emit(canvas.width / 2, canvas.height / 2, 140, 15);
     if (!rafId) loop();
+  }
 
-    playSound();
+  /* =========================================================
+     開始
+     ========================================================= */
+  function startFlow(event) {
+    if (started) return;
+    started = true;
+
+    goFullscreen();
+    initAudio();
+
+    loading.style.display = 'none';
+    volumeTest.classList.add('show');
+
+    runVolumeTest();
   }
 
   /* =========================================================
      イベント登録
      ========================================================= */
-  document.addEventListener('click', startPrank);
-  document.addEventListener('touchstart', startPrank, { passive: true });
+  document.addEventListener('click', startFlow);
+  document.addEventListener('touchstart', startFlow, { passive: true });
 })();
 </script>
 </body>
